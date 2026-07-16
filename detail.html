@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>반갈 · 게임 상세</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="hd" id="header"></header>
+  <main>
+    <div class="wrap" id="detail" hidden>
+      <h1 class="detail-title" id="dQuestion"></h1>
+      <div class="detail-meta">
+        <div class="author">
+          <span class="ava" id="dAva"></span>
+          <span class="name" id="dAuthor"></span>
+          <span class="date" id="dDate"></span>
+        </div>
+        <div class="owner-actions" id="ownerActions" hidden>
+          <a class="mini-btn" id="editBtn">수정</a>
+          <button class="mini-btn del" id="deleteBtn">삭제</button>
+        </div>
+      </div>
+
+      <!-- 투표 아레나: 득표율만큼 서로 밀어냄 -->
+      <div class="arena">
+        <div class="arena-row">
+          <button class="vote-side a" id="sideA">
+            <div class="tag-lbl" id="labelA">A</div>
+            <div class="opt" id="optA"></div>
+            <div class="result" id="resultA" hidden>
+              <div class="pct" id="pctA">0%</div>
+              <div class="votes" id="votesA">0표</div>
+            </div>
+          </button>
+          <button class="vote-side b" id="sideB">
+            <div class="tag-lbl" id="labelB">B</div>
+            <div class="opt" id="optB"></div>
+            <div class="result" id="resultB" hidden>
+              <div class="pct" id="pctB">0%</div>
+              <div class="votes" id="votesB">0표</div>
+            </div>
+          </button>
+        </div>
+      </div>
+      <p class="vote-hint" id="voteHint"></p>
+
+      <!-- 좋아요 + 전체 갈림: 한 줄 -->
+      <div class="detail-actions">
+        <button class="like-big" id="likeBtn" type="button">
+          <span class="heart" id="likeHeart">♡</span>
+          <span id="likeCount">0</span>
+        </button>
+        <div class="total-big">
+          <span class="lbl">전체 갈림</span>
+          <span class="num" id="statTotal">0</span>
+        </div>
+      </div>
+    </div>
+  </main>
+  <footer class="ft">반갈 BAN-GAL — 세상 모든 고민을 반으로 갈라드립니다</footer>
+
+  <!-- 삭제 확인 모달 -->
+  <div class="modal-overlay" id="deleteModal" hidden>
+    <div class="modal">
+      <h2>삭제할까...?</h2>
+      <p>한번 지운 반갈은<br>되돌릴 수 없어요.</p>
+      <div class="modal-actions">
+        <button class="btn btn-accent" id="deleteCancel">놔둘래요</button>
+        <button class="btn btn-primary" id="deleteConfirm">삭제할래요</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="shared/form-utils.js"></script>
+  <script src="features/articles/detail.js"></script>
+</body>
+</html>
