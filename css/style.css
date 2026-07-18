@@ -256,7 +256,8 @@ label.lbl .req { color: var(--a); }
 .arena { position: relative; margin-bottom: 20px; }
 .arena-row { display: flex; gap: 12px; align-items: stretch; }
 .vote-side {
-  flex: 1 1 0%; min-width: 150px; padding: clamp(22px, 3vw, 34px) clamp(16px, 2.6vw, 22px); border: 3px solid var(--ink); border-radius: var(--radius-lg);
+  flex-grow: 1; flex-shrink: 1; flex-basis: 0%;
+  min-width: 150px; padding: clamp(22px, 3vw, 34px) clamp(16px, 2.6vw, 22px); border: 3px solid var(--ink); border-radius: var(--radius-lg);
   box-shadow: var(--shadow); overflow: hidden;
   transition: flex-grow 0.55s cubic-bezier(0.34, 1.35, 0.5, 1), transform 0.12s ease, box-shadow 0.12s ease, background-color 0.22s ease;
   will-change: flex-grow, transform, background-color;
@@ -284,6 +285,7 @@ label.lbl .req { color: var(--a); }
 .vote-hint { text-align: center; font-size: 13px; font-weight: 800; color: var(--muted); margin: 0 0 28px; }
 
 /* ---------- 좋아요 ---------- */
+.heart { line-height: 1; font-family: inherit; }
 .like-btn {
   display: inline-flex; align-items: center; gap: 8px; margin: 0 auto 36px; padding: 11px 22px;
   border: 2.5px solid var(--ink); border-radius: 100px; background: #fff;
@@ -292,7 +294,7 @@ label.lbl .req { color: var(--a); }
 }
 .like-btn:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--ink); }
 .like-btn:active { transform: translate(3px,3px); box-shadow: 1px 1px 0 var(--ink); }
-.like-btn .heart { font-size: 16px; line-height: 1; transition: transform 0.15s ease; }
+.like-btn .heart { font-size: 16px; transition: transform 0.15s ease; }
 .like-btn.liked { background: var(--a); color: #fff; }
 .like-btn.pop .heart { transform: scale(1.4); }
 .like-row { display: flex; justify-content: center; }
@@ -307,7 +309,7 @@ label.lbl .req { color: var(--a); }
 }
 .like-big:hover { transform: translate(-2px,-2px); box-shadow: 7px 7px 0 var(--ink); }
 .like-big:active { transform: translate(3px,3px); box-shadow: 1px 1px 0 var(--ink); }
-.like-big .heart { font-size: 26px; line-height: 1; transition: transform 0.15s ease; font-family: inherit; }
+.like-big .heart { font-size: 26px; transition: transform 0.15s ease; }
 .like-big.liked { background: var(--a); color: #fff; }
 .like-big.pop .heart { transform: scale(1.4); }
 .total-big {

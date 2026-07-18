@@ -1,23 +1,9 @@
-/* =========================================================
-   반갈 BAN-GAL — API 레이어
-   ---------------------------------------------------------
-   백엔드: KTB4_Jade_Week4 (Spring Boot). 인증 = httpOnly 쿠키 + CSRF.
-   자세한 계약/미구현 목록은 BACKEND_연동_가이드.md 참고.
-
-   - USE_MOCK=true  : localStorage 목업(백엔드 없이 데모). 아래 mock 브랜치 사용.
-   - USE_MOCK=false : 실제 백엔드로 요청. credentials:"include" + X-XSRF-TOKEN 헤더.
-
-   ⚠️ 백엔드에 없어서 "비워둔" 기능은 NOT_IMPLEMENTED 에러를 던집니다:
-      - vote()            : 투표(A/B) 자체가 백엔드에 없음
-      - (게시글 A/B 옵션)  : Article DTO에 optionA/B, votesA/B 없음
-      - changePassword의 현재비밀번호 검증 : 백엔드가 currentPassword를 받지 않음
-   ========================================================= */
 (function () {
   const cfg = window.BANGAL_CONFIG;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function notImplemented(what) {
-    const e = new Error((what || "이 기능") + "은(는) 아직 백엔드에 구현되지 않았어요. BACKEND_연동_가이드.md 참고");
+    const e = new Error((what || "이 기능") + "은(는) 아직 백엔드에 구현되지 않았어요.");
     e.code = "NOT_IMPLEMENTED";
     return e;
   }
@@ -26,6 +12,7 @@
     const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
     return m ? decodeURIComponent(m[1]) : null;
   }
+
   function readAuthCookieState() {
     return {
       accessToken: readCookie("ACCESS_TOKEN"),
@@ -76,12 +63,21 @@
         msg = j.message || msg; fields = j.fields || null; code = j.code || null;
       } catch (e) {}
       appendDebugLog && appendDebugLog({ type: "http.error", path, status: res.status, body: bodyJson });
+      console.error("[BANGAL API ERROR]", {
+        method,
+        path,
+        status: res.status,
+        response: bodyJson,
+      });
       const err = new Error(msg); err.status = res.status; err.fields = fields; err.serverCode = code;
       throw err;
     }
     if (res.status === 204) return null;
     const text = await res.text();
-    return text ? JSON.parse(text) : null;
+    if (!text) return null;
+
+    const json = JSON.parse(text);
+    return json && json.success === true ? (json.data ?? null) : json;
   }
 
   const SESSION_KEY = "bangal.session";
@@ -107,13 +103,11 @@
     session: () => readSession(),
   };
 
-  // ---------- 백엔드 응답 → 프론트 game 모양 매핑 ----------
-  // ⚠️ 백엔드 Article엔 optionA/B, votesA/B, myVote가 없음 → null/0으로 채움(투표 UI는 비활성).
   function mapSummary(a) {
     return {
       id: a.articleUuid, question: a.title,
       optionA: null, optionB: null, votesA: 0, votesB: 0, myVote: null,
-      likes: a.likeCount || 0, liked: false,
+      likes: a.likeCount || 0, liked: !!(a.isLiked ?? a.liked),
       commentCount: a.commentCount || 0, viewCount: a.viewCount || 0,
       author: a.writer, authorId: a.writer, profileImageUrl: a.profileImageUrl,
       date: (a.createdAt || "").slice(0, 10),
@@ -213,8 +207,6 @@
       return mapDetail(res, id);
     },
 
-    // ⚠️ 백엔드 Article엔 optionA/B가 없음. 지금은 title/content/imageUrl만 전송된다.
-    //    A/B 선택지는 저장되지 않음 → BACKEND_연동_가이드.md (A) 참고.
     async createGame({ question, optionA, optionB, content, imageUrl }) {
       if (cfg.USE_MOCK) {
         await wait(150);
@@ -262,7 +254,6 @@
       return true;
     },
 
-    // ⛔ 투표: 백엔드에 없음 → 항상 NOT_IMPLEMENTED. (가이드 (A) 참고)
     async vote(id, side) {
       if (cfg.USE_MOCK) {
         await wait(100);
@@ -313,7 +304,6 @@
         return { email: u.email, nick: u.nick, id: u.id, profileImageUrl: u.profileImageUrl || "" };
       }
       const res = await http("GET", "/me/basic-info");
-      // ⚠️ 백엔드가 memberUuid를 안 줌 → 작성자 판별용 id 없음(가이드 (D) 참고)
       return { email: res.email, nick: res.nickname, id: null, profileImageUrl: res.profileImageUrl };
     },
 
@@ -331,19 +321,20 @@
       return { nick: nick, profileImageUrl };
     },
 
-    // ⚠️ 백엔드 PUT /me/security 는 currentPassword를 받지 않음(가이드 (B) 참고).
-    //    현재 비밀번호 검증은 서버에서 미지원 → newPassword/checkPassword만 전송.
-    async changePassword({ currentPassword, newPassword, checkPassword }) {
+    async changePassword({ nowPassword, nextPassword, checkNextPassword }) {
       if (cfg.USE_MOCK) {
         await wait(150);
         const user = window.MockStore.getUser();
-        if (currentPassword !== user.password) {
+        if (nowPassword !== user.password) {
           const e = new Error("현재 비밀번호와 다릅니다"); e.code = "WRONG_PASSWORD"; throw e;
         }
-        window.MockStore.saveUser({ ...user, password: newPassword });
+        if (nextPassword !== checkNextPassword) {
+          const e = new Error("새 비밀번호가 일치하지 않습니다"); e.code = "PASSWORD_MISMATCH"; throw e;
+        }
+        window.MockStore.saveUser({ ...user, password: nextPassword });
         return true;
       }
-      await http("PUT", "/me/security", { password: newPassword, checkPassword: checkPassword });
+      await http("PUT", "/me/security", { nowPassword, nextPassword, checkNextPassword });
       return true;
     },
 
@@ -358,7 +349,6 @@
         await wait(80);
         return { totalVotes: window.MockStore.getGames().reduce((a, g) => a + g.votesA + g.votesB, 0) };
       }
-      // 백엔드 미제공 → 0 (또는 목록 likeCount 합 등으로 대체 가능)
       return { totalVotes: 0 };
     },
   };

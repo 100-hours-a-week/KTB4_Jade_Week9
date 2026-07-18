@@ -6,6 +6,7 @@
   let game = null;
   let isLiked = false;
   let isLikePending = false;
+  let isVotePending = false;
 
   const $ = (s) => document.getElementById(s);
 
@@ -39,8 +40,6 @@
     $("votesB").textContent = UI.fmt(game.votesB) + "표";
     $("sideA").style.flexGrow = showResult ? Math.max(pctA, 18) : 50;
     $("sideB").style.flexGrow = showResult ? Math.max(pctB, 18) : 50;
-    $("sideA").style.flexBasis = "0%";
-    $("sideB").style.flexBasis = "0%";
 
     $("statTotal").textContent = UI.fmt(total);
 
@@ -58,6 +57,8 @@
   }
 
   async function doVote(side) {
+    if (isVotePending) return;
+    isVotePending = true;
     const prev = { votesA: game.votesA, votesB: game.votesB, myVote: game.myVote };
     try {
       if (game.myVote === side) {
@@ -85,6 +86,8 @@
       game.votesA = prev.votesA; game.votesB = prev.votesB; game.myVote = prev.myVote;
       render();
       UI.toast(err.message || "투표에 실패했어요");
+    } finally {
+      isVotePending = false;
     }
   }
 
@@ -98,6 +101,9 @@
       game.likes = res.likes;
       isLiked = !!res.liked;
       render();
+
+      btn.classList.remove("pop");
+      void btn.offsetWidth;
       btn.classList.add("pop");
       setTimeout(() => btn.classList.remove("pop"), 200);
       UI.toast(res.liked ? "좋아요! ♥" : "좋아요 취소~ ♡");

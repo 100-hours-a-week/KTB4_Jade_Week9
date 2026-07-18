@@ -36,11 +36,15 @@
     const btn = e.target.querySelector("button[type=submit]");
     btn.disabled = true;
     try {
-      await Api.changePassword({ currentPassword: current, newPassword: newPw, checkPassword: confirm });
+      await Api.changePassword({
+        nowPassword: current,
+        nextPassword: newPw,
+        checkNextPassword: confirm,
+      });
       UI.toast("비밀번호 수정 완료");
       setTimeout(() => location.href = "../../list.html", 500);
     } catch (err) {
-      if (err.code === "WRONG_PASSWORD") $("curError").hidden = false;
+      if (err.code === "WRONG_PASSWORD" || err.serverCode === "WRONG_PASSWORD") $("curError").hidden = false;
       else UI.toast(err.message || "수정에 실패했어요");
       btn.disabled = false;
     }

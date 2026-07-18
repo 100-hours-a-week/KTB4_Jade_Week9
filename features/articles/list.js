@@ -30,7 +30,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:12px;">
             <span class="count">⚡ ${UI.fmt(t)}명 갈림</span>
-            <span class="card-like${g.liked ? " liked" : ""}">${g.liked ? "♥" : "♡"} ${UI.fmt(g.likes || 0)}</span>
+            <span class="card-like${g.liked ? " liked" : ""}"><span class="heart">${g.liked ? "♥" : "♡"}</span> ${UI.fmt(g.likes || 0)}</span>
           </div>
         </div>
       </a>`;
