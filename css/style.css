@@ -98,6 +98,11 @@ main { flex: 1; width: 100%; }
   box-shadow: 3px 3px 0 var(--ink); transition: all 0.1s ease;
 }
 .avatar-btn:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--ink); }
+.has-profile-image {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
 
 .menu-anchor { position: relative; z-index: 60; }
 .menu {
@@ -223,6 +228,7 @@ label.lbl .req { color: var(--a); }
 .author .ava {
   width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--ink); color: #fff;
   font-size: 12px; font-weight: 900; display: inline-flex; align-items: center; justify-content: center;
+  background-position: center; background-repeat: no-repeat; background-size: cover;
 }
 .author .name { font-size: 13px; font-weight: 800; }
 .author .date { font-size: 12px; color: var(--faint); font-weight: 700; }

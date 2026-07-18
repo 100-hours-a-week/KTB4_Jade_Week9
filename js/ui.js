@@ -70,6 +70,8 @@
         </div>
       </div>`;
 
+    window.ProfileImages.apply(host.querySelector("#avatarBtn"), opts.user && opts.user.profileImageUrl, initial);
+
     const menu = host.querySelector("#userMenu");
     host.querySelector("#avatarBtn").addEventListener("click", (e) => {
       e.stopPropagation();

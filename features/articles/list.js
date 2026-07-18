@@ -8,6 +8,16 @@
 
   const host = () => document.getElementById("games");
 
+  function hydrateProfileImages(container) {
+    container.querySelectorAll("[data-profile-image]").forEach((avatar) => {
+      ProfileImages.apply(
+        avatar,
+        avatar.dataset.profileImage,
+        avatar.dataset.fallback
+      );
+    });
+  }
+
   function cardHtml(g) {
     const t = g.votesA + g.votesB;
     const doneBadge = g.myVote ? `<span class="badge-done">반갈 완료!</span>` : "";
@@ -24,7 +34,7 @@
         </div>
         <div class="game-meta">
           <div class="author">
-            <span class="ava" style="background:${UI.avatarBg(g.authorId)}">${UI.esc(g.author.slice(0,1))}</span>
+            <span class="ava" style="background-color:${UI.avatarBg(g.authorId)}" data-profile-image="${UI.esc(g.profileImageUrl || "")}" data-fallback="${UI.esc(g.author.slice(0,1))}">${UI.esc(g.author.slice(0,1))}</span>
             <span class="name">${UI.esc(g.author)}</span>
             <span class="date">· ${UI.esc(g.date)}</span>
           </div>
@@ -42,7 +52,11 @@
     document.getElementById("loader").hidden = false;
     try {
       const { items, nextCursor } = await Api.listGames({ cursor, limit: PAGE_SIZE });
-      host().insertAdjacentHTML("beforeend", items.map(cardHtml).join(""));
+      const batch = document.createElement("div");
+      batch.innerHTML = items.map(cardHtml).join("");
+      const nodes = Array.from(batch.children);
+      host().append(...nodes);
+      nodes.forEach(hydrateProfileImages);
       cursor = nextCursor;
       if (nextCursor == null) {
         done = true;

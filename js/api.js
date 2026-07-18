@@ -310,9 +310,13 @@
     async updateMe({ nick, profileImageUrl }) {
       if (cfg.USE_MOCK) {
         await wait(150);
-        const user = { ...window.MockStore.getUser(), nick };
+        const user = {
+          ...window.MockStore.getUser(),
+          nick,
+          profileImageUrl: profileImageUrl ?? window.MockStore.getUser().profileImageUrl,
+        };
         window.MockStore.saveUser(user);
-        return { nick };
+        return { nick, profileImageUrl: user.profileImageUrl };
       }
       const patch = {};
       if (nick != null) patch.nickname = nick;
