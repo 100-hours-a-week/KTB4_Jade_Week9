@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import GameDetailPage from "../features/articles/GameDetailPage.jsx";
 import GameFormPage from "../features/articles/GameFormPage.jsx";
 import GamesPage from "../features/articles/GamesPage.jsx";
@@ -6,12 +7,26 @@ import LoginPage from "../features/auth/LoginPage.jsx";
 import SignupPage from "../features/auth/SignupPage.jsx";
 import PasswordPage from "../features/mypage/PasswordPage.jsx";
 import ProfilePage from "../features/mypage/ProfilePage.jsx";
+import { onUnauthorized } from "../services/loginStatusCache.js";
 import Toast from "../shared/components/Toast.jsx";
+import { toast } from "../shared/toast.js";
 import ProtectedRoute from "./ProtectedRoute.jsx";
 
 const protect = (page) => <ProtectedRoute>{page}</ProtectedRoute>;
 
 export default function App() {
+  const navigate = useNavigate();
+
+  // 세션이 끊기면 어느 화면에 있든 로그인 화면으로 되돌린다.
+  useEffect(
+    () =>
+      onUnauthorized(() => {
+        toast("로그인이 만료됐어요. 다시 로그인해 줘");
+        navigate("/", { replace: true });
+      }),
+    [navigate],
+  );
+
   return (
     <>
       <Routes>

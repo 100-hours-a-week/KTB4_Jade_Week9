@@ -1,10 +1,11 @@
 const LOGIN_STATUS_KEY = "bangal.session";
-const DEBUG_LOG_KEY = "bangal.debug.logs";
 
 export function saveLoginStatus(data) {
   try {
     localStorage.setItem(LOGIN_STATUS_KEY, JSON.stringify(data));
-  } catch (e) {}
+  } catch (e) {
+    // 사파리 프라이빗 모드 등 저장이 막힌 환경은 무시한다.
+  }
 }
 
 export function readLoginStatus() {
@@ -18,47 +19,22 @@ export function readLoginStatus() {
 export function clearLoginStatus() {
   try {
     localStorage.removeItem(LOGIN_STATUS_KEY);
-  } catch (e) {}
+  } catch (e) {
+    // 위와 동일
+  }
 }
 
-function readCookie(name) {
-  const match = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
-  return match ? decodeURIComponent(match[1]) : null;
+const unauthorizedListeners = new Set();
+
+// 서버가 최종적으로 401을 돌려준 순간 세션을 비우고 구독자에게 알린다.
+// 동시에 여러 요청이 401을 받아도 알림은 한 번만 나가도록 이미 비워진 경우는 건너뛴다.
+export function notifyUnauthorized() {
+  if (!readLoginStatus()) return;
+  clearLoginStatus();
+  unauthorizedListeners.forEach((listener) => listener());
 }
 
-export function readAuthCookieState() {
-  return {
-    accessToken: readCookie("ACCESS_TOKEN"),
-    refreshToken: readCookie("REFRESH_TOKEN"),
-    xsrfToken: readCookie("XSRF-TOKEN"),
-    documentCookie: document.cookie,
-  };
-}
-
-export function appendDebugLog(entry) {
-  try {
-    const items = JSON.parse(localStorage.getItem(DEBUG_LOG_KEY) || "[]");
-    items.push({ timestamp: new Date().toISOString(), ...entry });
-    localStorage.setItem(DEBUG_LOG_KEY, JSON.stringify(items.slice(-20)));
-  } catch (e) {}
-}
-
-if (typeof window !== "undefined") {
-  window.BANGAL_DEBUG = {
-    log: appendDebugLog,
-    read: () => {
-      try {
-        return JSON.parse(localStorage.getItem(DEBUG_LOG_KEY) || "[]");
-      } catch (e) {
-        return [];
-      }
-    },
-    clear: () => {
-      try {
-        localStorage.removeItem(DEBUG_LOG_KEY);
-      } catch (e) {}
-    },
-    authCookies: readAuthCookieState,
-    loginStatus: readLoginStatus,
-  };
+export function onUnauthorized(listener) {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
 }

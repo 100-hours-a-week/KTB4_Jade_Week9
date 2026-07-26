@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-   Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { api } from "../../services/api.js";
 import Heart from "../../shared/components/Heart.jsx";
 import Loading from "../../shared/components/Loading.jsx";
 import Shell from "../../shared/components/Shell.jsx";
 import Avatar from "../../shared/components/Avatar.jsx";
-import { toast } from "../../shared/components/Toast.jsx";
+import { toast } from "../../shared/toast.js";
 import useCurrentUser from "../../shared/hooks/useCurrentUser.js";
 import {
   formatNumber,
@@ -21,33 +20,49 @@ export default function GamesPage() {
   const [loading, setLoading] = useState(false);
   const [totalVotes, setTotalVotes] = useState(0);
   const firstLoad = useRef(false);
+  const inFlight = useRef(false);
 
   const loadMore = useCallback(async () => {
-    if (loading || done) return;
+    // state는 같은 프레임에 들어온 두 번째 호출을 못 막는다. ref로 즉시 잠근다.
+    if (inFlight.current || done) return;
 
+    inFlight.current = true;
     setLoading(true);
     try {
       const result = await api.listGames({ cursor, limit: 10 });
-      setGames((current) => [...current, ...result.items]);
+      setGames((current) => {
+        const seen = new Set(current.map((game) => game.id));
+        return [...current, ...result.items.filter((game) => !seen.has(game.id))];
+      });
       setCursor(result.nextCursor);
       setDone(result.nextCursor == null);
     } catch (error) {
       toast(error.message || "목록을 불러오지 못했어요");
     } finally {
+      inFlight.current = false;
       setLoading(false);
     }
-  }, [cursor, done, loading]);
+  }, [cursor, done]);
 
+  // 요약은 진입할 때 한 번만 읽는다.
   useEffect(() => {
+    let active = true;
     api
       .getSummary()
-      .then(({ totalVotes: total }) => setTotalVotes(total))
+      .then(({ totalVotes: total }) => {
+        if (active) setTotalVotes(total);
+      })
       .catch(() => {});
 
-    if (!firstLoad.current) {
-      firstLoad.current = true;
-      loadMore();
-    }
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (firstLoad.current) return;
+    firstLoad.current = true;
+    loadMore();
   }, [loadMore]);
 
   useEffect(() => {

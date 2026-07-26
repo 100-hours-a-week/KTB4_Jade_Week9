@@ -1,17 +1,21 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../services/api.js";
 import Field from "../../shared/components/Field.jsx";
 import Shell from "../../shared/components/Shell.jsx";
-import { toast } from "../../shared/components/Toast.jsx";
+import { toast } from "../../shared/toast.js";
 import { EMAIL_PATTERN } from "../../shared/utils.js";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ email: "", password: "" });
   const [pending, setPending] = useState(false);
 
-  if (api.isLoggedIn()) return <Navigate to="/games" replace />;
+  // 보호 페이지에서 튕겨 왔다면 로그인 후 그 자리로 돌려보낸다.
+  const redirectTo = location.state?.from || "/games";
+
+  if (api.isLoggedIn()) return <Navigate to={redirectTo} replace />;
 
   const submit = async (event) => {
     event.preventDefault();
@@ -29,7 +33,7 @@ export default function LoginPage() {
     try {
       await api.login(form.email.trim(), form.password);
       toast("반틈 준비 완료 ⚡");
-      navigate("/games", { replace: true });
+      navigate(redirectTo, { replace: true });
     } catch (error) {
       toast(error.message || "로그인에 실패했어요");
     } finally {

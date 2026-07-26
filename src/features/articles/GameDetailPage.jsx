@@ -6,7 +6,7 @@ import Heart from "../../shared/components/Heart.jsx";
 import Loading from "../../shared/components/Loading.jsx";
 import Modal from "../../shared/components/Modal.jsx";
 import Shell from "../../shared/components/Shell.jsx";
-import { toast } from "../../shared/components/Toast.jsx";
+import { toast } from "../../shared/toast.js";
 import useCurrentUser from "../../shared/hooks/useCurrentUser.js";
 import {
   formatNumber,
@@ -30,17 +30,25 @@ export default function GameDetailPage() {
   const [editingText, setEditingText] = useState("");
 
   useEffect(() => {
+    let active = true;
+
     api
       .getGame(id)
       .then((result) => {
+        if (!active) return;
         setGame(result);
         setLiked(Boolean(result.liked));
         setComments(result.comments || []);
       })
       .catch(() => {
+        if (!active) return;
         toast("게임을 찾을 수 없어요");
         navigate("/games", { replace: true });
       });
+
+    return () => {
+      active = false;
+    };
   }, [id, navigate]);
 
   if (userLoading || !game) return <Loading />;
@@ -107,22 +115,31 @@ export default function GameDetailPage() {
     event.preventDefault();
     const content = commentText.trim();
     if (!content || commentPending) return;
+    if (!user) {
+      toast("로그인 정보를 확인할 수 없어요");
+      return;
+    }
 
     setCommentPending(true);
     try {
       const created = await api.addComment(id, content);
-      setComments((current) => [
-        {
-          id: created.id,
-          content,
-          author: user.nick,
-          isMine: true,
-          profileImageUrl: user.profileImageUrl,
-          date: toLocalDate(new Date().toISOString()),
-        },
-        ...current,
-      ]);
-      setGame((current) => ({ ...current, commentCount: current.commentCount + 1 }));
+      if (created.id) {
+        setComments((current) => [
+          {
+            id: created.id,
+            content,
+            author: user.nick,
+            isMine: true,
+            profileImageUrl: user.profileImageUrl,
+            date: toLocalDate(new Date().toISOString()),
+          },
+          ...current,
+        ]);
+      } else {
+        // 서버가 id를 안 주면 수정·삭제를 걸 수 없다. 목록을 다시 읽어 실제 값으로 맞춘다.
+        const refreshed = await api.getGame(id);
+        setComments(refreshed.comments || []);
+      }
       setCommentText("");
       toast("댓글 등록 완료");
     } catch (error) {
@@ -157,7 +174,6 @@ export default function GameDetailPage() {
     try {
       await api.deleteComment(id, commentId);
       setComments((current) => current.filter((c) => c.id !== commentId));
-      setGame((current) => ({ ...current, commentCount: Math.max(0, current.commentCount - 1) }));
       toast("댓글을 삭제했어요");
     } catch (error) {
       toast(error.message || "댓글 삭제에 실패했어요");
@@ -233,7 +249,7 @@ export default function GameDetailPage() {
           </div>
         </div>
         <div className="comment-section">
-          <h2 className="comment-title">댓글 {formatNumber(game.commentCount)}</h2>
+          <h2 className="comment-title">댓글 {formatNumber(comments.length)}</h2>
           <form className="comment-form" onSubmit={submitComment}>
             <textarea
               className="textarea"

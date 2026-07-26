@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../services/api.js";
-import { profileImages } from "../../services/profileImages.js";
+import { profileImages, validateImageFile } from "../../services/profileImages.js";
 import Field from "../../shared/components/Field.jsx";
 import Shell from "../../shared/components/Shell.jsx";
-import { toast } from "../../shared/components/Toast.jsx";
+import { toast } from "../../shared/toast.js";
 import {
   EMAIL_PATTERN,
   NICKNAME_PATTERN,
@@ -33,14 +33,13 @@ export default function SignupPage() {
 
   const selectAvatar = (file) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast("이미지 파일만 선택해 주세요");
+
+    const invalid = validateImageFile(file);
+    if (invalid) {
+      toast(invalid);
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast("5MB 이하 이미지만 선택해 주세요");
-      return;
-    }
+
     setAvatar(file);
     setPreview(URL.createObjectURL(file));
   };

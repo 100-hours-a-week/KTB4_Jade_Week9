@@ -4,7 +4,7 @@ import { api } from "../../services/api.js";
 import Field from "../../shared/components/Field.jsx";
 import Loading from "../../shared/components/Loading.jsx";
 import Shell from "../../shared/components/Shell.jsx";
-import { toast } from "../../shared/components/Toast.jsx";
+import { toast } from "../../shared/toast.js";
 import useCurrentUser from "../../shared/hooks/useCurrentUser.js";
 import { PASSWORD_PATTERN } from "../../shared/utils.js";
 
@@ -101,7 +101,7 @@ export default function PasswordPage() {
             />
           </Field>
           <button className="btn btn-accent" disabled={pending}>
-            수정하기
+            {pending ? "저장 중..." : "수정하기"}
           </button>
         </form>
       </div>

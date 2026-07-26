@@ -6,16 +6,31 @@ export default function useObjectUrl(reference) {
 
   useEffect(() => {
     let active = true;
-    let resolvedUrl = "";
+    let createdUrl = "";
 
-    profileImages.resolve(reference).then((nextUrl) => {
-      resolvedUrl = nextUrl || "";
-      if (active) setUrl(resolvedUrl);
-    });
+    const release = () => {
+      if (createdUrl.startsWith("blob:")) URL.revokeObjectURL(createdUrl);
+      createdUrl = "";
+    };
+
+    profileImages
+      .resolve(reference)
+      .then((nextUrl) => {
+        createdUrl = nextUrl || "";
+        // 정리 단계를 이미 지났다면 방금 만든 URL을 그 자리에서 해제한다.
+        if (!active) {
+          release();
+          return;
+        }
+        setUrl(createdUrl);
+      })
+      .catch(() => {
+        if (active) setUrl("");
+      });
 
     return () => {
       active = false;
-      if (resolvedUrl.startsWith("blob:")) URL.revokeObjectURL(resolvedUrl);
+      release();
     };
   }, [reference]);
 

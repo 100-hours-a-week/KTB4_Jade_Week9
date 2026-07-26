@@ -1,8 +1,15 @@
 const DB_NAME = "bangal.profile-images";
 const STORE_NAME = "images";
 const PREFIX = "local-profile:";
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+export const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_DIMENSION = 512;
+
+// 선택한 파일이 규격에 맞는지 검사한다. 통과하면 null, 아니면 사용자에게 보여줄 메시지.
+export function validateImageFile(file) {
+  if (!file || !file.type.startsWith("image/")) return "이미지 파일만 선택해 주세요";
+  if (file.size > MAX_FILE_SIZE) return "5MB 이하 이미지만 선택해 주세요";
+  return null;
+}
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -40,8 +47,8 @@ function loadImage(file) {
 }
 
 async function compress(file) {
-  if (!file || !file.type.startsWith("image/")) throw new Error("이미지 파일만 선택해 주세요");
-  if (file.size > MAX_FILE_SIZE) throw new Error("5MB 이하 이미지만 선택해 주세요");
+  const invalid = validateImageFile(file);
+  if (invalid) throw new Error(invalid);
 
   const image = await loadImage(file);
   const scale = Math.min(1, MAX_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight));
@@ -112,4 +119,4 @@ async function resolve(reference) {
   return blob ? URL.createObjectURL(blob) : null;
 }
 
-export const profileImages = { save, get, remove, resolve, isLocal };
+export const profileImages = { save, remove, resolve, isLocal };

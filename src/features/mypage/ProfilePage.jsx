@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../services/api.js";
-import { profileImages } from "../../services/profileImages.js";
+import { profileImages, validateImageFile } from "../../services/profileImages.js";
 import Field from "../../shared/components/Field.jsx";
 import Loading from "../../shared/components/Loading.jsx";
 import Modal from "../../shared/components/Modal.jsx";
 import Shell from "../../shared/components/Shell.jsx";
-import { toast } from "../../shared/components/Toast.jsx";
+import { toast } from "../../shared/toast.js";
 import useCurrentUser from "../../shared/hooks/useCurrentUser.js";
 import useObjectUrl from "../../shared/hooks/useObjectUrl.js";
 import { NICKNAME_PATTERN } from "../../shared/utils.js";
@@ -16,15 +16,14 @@ export default function ProfilePage() {
   const inputRef = useRef(null);
   const { loading, user } = useCurrentUser();
   const currentUrl = useObjectUrl(user?.profileImageUrl);
-  const [nick, setNick] = useState("");
+  // null이면 아직 손대지 않았다는 뜻. 서버에서 온 닉네임을 그대로 보여준다.
+  const [nickInput, setNickInput] = useState(null);
   const [avatar, setAvatar] = useState(null);
   const [preview, setPreview] = useState("");
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
-  useEffect(() => {
-    if (user) setNick(user.nick || "");
-  }, [user]);
+  const nick = nickInput ?? user?.nick ?? "";
 
   useEffect(
     () => () => {
@@ -35,12 +34,10 @@ export default function ProfilePage() {
 
   const selectAvatar = (file) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast("이미지 파일만 선택해 주세요");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast("5MB 이하 이미지만 선택해 주세요");
+
+    const invalid = validateImageFile(file);
+    if (invalid) {
+      toast(invalid);
       return;
     }
 
@@ -90,6 +87,20 @@ export default function ProfilePage() {
 
   if (loading) return <Loading />;
 
+  // getMe가 실패하면 user가 null로 온다. 역참조하기 전에 막는다.
+  if (!user) {
+    return (
+      <Shell header back="/games">
+        <div className="wrap-narrow profile-wrap">
+          <h1 className="page-title profile-title">회원정보 수정</h1>
+          <p className="comment-empty">
+            회원 정보를 불러오지 못했어요. 잠시 후 다시 시도해 줘.
+          </p>
+        </div>
+      </Shell>
+    );
+  }
+
   const avatarUrl = preview || currentUrl;
 
   return (
@@ -132,11 +143,11 @@ export default function ProfilePage() {
               className="input"
               maxLength="10"
               value={nick}
-              onChange={(event) => setNick(event.target.value)}
+              onChange={(event) => setNickInput(event.target.value)}
             />
           </Field>
           <button className="btn btn-accent form-submit" disabled={pending}>
-            수정하기
+            {pending ? "저장 중..." : "수정하기"}
           </button>
         </form>
         <button

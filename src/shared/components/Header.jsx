@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../services/api.js";
 import Avatar from "./Avatar.jsx";
-import { toast } from "./Toast.jsx";
+import { toast } from "../toast.js";
 
 export default function Header({ back = false, user }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -16,9 +16,15 @@ export default function Header({ back = false, user }) {
   }, []);
 
   const logout = async () => {
-    await api.logout();
-    toast("로그아웃 완료");
-    navigate("/", { replace: true });
+    try {
+      await api.logout();
+      toast("로그아웃 완료");
+    } catch (error) {
+      // 요청이 실패해도 로컬 세션은 이미 비워졌다. 화면은 반드시 로그인으로 돌린다.
+      toast("로그아웃 요청은 실패했지만 이 기기에서는 로그아웃했어");
+    } finally {
+      navigate("/", { replace: true });
+    }
   };
 
   return (

@@ -4,7 +4,7 @@ import { api } from "../../services/api.js";
 import Field from "../../shared/components/Field.jsx";
 import Loading from "../../shared/components/Loading.jsx";
 import Shell from "../../shared/components/Shell.jsx";
-import { toast } from "../../shared/components/Toast.jsx";
+import { toast } from "../../shared/toast.js";
 import useCurrentUser from "../../shared/hooks/useCurrentUser.js";
 
 export default function GameFormPage({ edit = false }) {
@@ -16,14 +16,18 @@ export default function GameFormPage({ edit = false }) {
     optionA: "",
     optionB: "",
   });
-  const [pending, setPending] = useState(edit);
+  const [gameLoaded, setGameLoaded] = useState(!edit);
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    if (!edit || !user) return;
+    // 회원 정보를 못 읽었으면 불러올 수 없다. 세션 처리에 맡기고 여기선 아무것도 하지 않는다.
+    if (!edit || !user) return undefined;
 
+    let active = true;
     api
       .getGame(id)
       .then((game) => {
+        if (!active) return;
         if (!game.isMine) {
           toast("작성자만 수정할 수 있어요");
           navigate(`/games/${id}`, { replace: true });
@@ -34,26 +38,45 @@ export default function GameFormPage({ edit = false }) {
           optionA: game.optionA,
           optionB: game.optionB,
         });
-        setPending(false);
       })
-      .catch(() => navigate("/games", { replace: true }));
+      .catch(() => {
+        if (active) navigate("/games", { replace: true });
+      })
+      .finally(() => {
+        if (active) setGameLoaded(true);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [edit, id, navigate, user]);
 
   const submit = async (event) => {
     event.preventDefault();
 
-    if (!form.question.trim() || !form.optionA.trim() || !form.optionB.trim()) {
+    const payload = {
+      question: form.question.trim(),
+      optionA: form.optionA.trim(),
+      optionB: form.optionB.trim(),
+    };
+
+    if (!payload.question || !payload.optionA || !payload.optionB) {
       toast("질문과 두 선택지를 모두 입력해 줘");
+      return;
+    }
+    if (payload.optionA === payload.optionB) {
+      toast("두 선택지가 같으면 반틈이 안 갈려");
       return;
     }
 
     setPending(true);
     try {
       const game = edit
-        ? await api.updateGame(id, form)
-        : await api.createGame(form);
+        ? await api.updateGame(id, payload)
+        : await api.createGame(payload);
       toast(edit ? "반틈을 수정했다" : "새 반틈 등판! 🔪");
-      navigate(`/games/${game.id}`, { replace: true });
+      // 서버가 id를 안 돌려주면 상세로 갈 수 없으니 목록으로 보낸다.
+      navigate(game.id ? `/games/${game.id}` : "/games", { replace: true });
     } catch (error) {
       toast(error.message || "저장에 실패했어요");
     } finally {
@@ -61,7 +84,7 @@ export default function GameFormPage({ edit = false }) {
     }
   };
 
-  if (loading) return <Loading />;
+  if (loading || (edit && user && !gameLoaded)) return <Loading />;
 
   return (
     <Shell header back={edit ? `/games/${id}` : "/games"} user={user}>

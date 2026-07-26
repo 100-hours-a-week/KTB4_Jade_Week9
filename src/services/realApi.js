@@ -1,6 +1,8 @@
 import { toLocalDate } from "../shared/utils.js";
 import { http } from "./httpClient.js";
-import { saveLoginStatus, readLoginStatus, clearLoginStatus, appendDebugLog, readAuthCookieState } from "./loginStatusCache.js";
+import { saveLoginStatus, readLoginStatus, clearLoginStatus } from "./loginStatusCache.js";
+
+const UNKNOWN_AUTHOR = "알 수 없음";
 
 function toCount(value) {
   const number = Number(value);
@@ -11,6 +13,11 @@ function toSide(value) {
   if (value == null) return null;
   const side = String(value).trim().toUpperCase();
   return side === "A" || side === "B" ? side : null;
+}
+
+function toAuthor(writer) {
+  const name = typeof writer === "string" ? writer.trim() : "";
+  return name || UNKNOWN_AUTHOR;
 }
 
 function mapSummary(article) {
@@ -24,7 +31,7 @@ function mapSummary(article) {
     myVote: toSide(article.myVote),
     likes: toCount(article.likeCount),
     liked: !!article.isLiked,
-    author: article.writer,
+    author: toAuthor(article.writer),
     isMine: !!article.isMine,
     profileImageUrl: article.profileImageUrl,
     date: toLocalDate(article.createdAt),
@@ -34,13 +41,12 @@ function mapSummary(article) {
 function mapComment(comment) {
   return {
     id: comment.commentUuid, content: comment.content,
-    author: comment.writer, isMine: !!comment.isMine, profileImageUrl: comment.profileImageUrl,
+    author: toAuthor(comment.writer), isMine: !!comment.isMine, profileImageUrl: comment.profileImageUrl,
     date: toLocalDate(comment.createdAt),
   };
 }
 
 function mapDetail(article, uuid) {
-  const comments = (article.comments || []).map(mapComment);
   return {
     id: uuid,
     question: article.title,
@@ -51,29 +57,21 @@ function mapDetail(article, uuid) {
     myVote: toSide(article.myVote),
     likes: toCount(article.likeCount),
     liked: !!article.isLiked,
-    commentCount: comments.length,
-    author: article.writer,
+    author: toAuthor(article.writer),
     isMine: !!article.isMine,
     profileImageUrl: article.profileImageUrl,
     date: toLocalDate(article.createdAt),
-    comments,
+    comments: (article.comments || []).map(mapComment),
   };
 }
 
 export const realApi = {
   async login(email, password) {
-    const res = await http("POST", "/auth/sign-in", { email, password });
+    const res = (await http("POST", "/auth/sign-in", { email, password })) || {};
     saveLoginStatus({
       profileImageUrl: res.profileImageUrl,
       accessTokenExpiresAt: res.accessTokenExpiresAt,
       loggedIn: true,
-    });
-    appendDebugLog({
-      type: "auth.sign-in",
-      success: true,
-      summary: { profileImageUrl: res?.profileImageUrl ?? null, accessTokenExpiresAt: res?.accessTokenExpiresAt ?? null },
-      cookies: readAuthCookieState(),
-      response: res,
     });
     return res;
   },
@@ -100,22 +98,24 @@ export const realApi = {
     const query = new URLSearchParams();
     if (cursor) query.set("cursor", cursor);
     query.set("size", limit);
-    const res = await http("GET", "/articles?" + query.toString());
+    const res = (await http("GET", "/articles?" + query.toString())) || {};
     return { items: (res.articles || []).map(mapSummary), nextCursor: res.hasNext ? res.nextCursor : null };
   },
 
   async getGame(id) {
     const res = await http("GET", "/articles/" + encodeURIComponent(id));
+    if (!res) throw new Error("반틈을 찾을 수 없어요");
     return mapDetail(res, id);
   },
 
   async createGame({ question, optionA, optionB }) {
-    const res = await http("POST", "/articles", {
+    const res = (await http("POST", "/articles", {
       title: question,
       optionA,
       optionB,
-    });
-    return { id: res.articleUuid };
+    })) || {};
+    // 서버가 본문 없이 성공만 알릴 수도 있다. 생성 자체는 성공이므로 id 없음을 그대로 알린다.
+    return { id: res.articleUuid ?? null };
   },
 
   async updateGame(id, { question, optionA, optionB }) {
@@ -139,29 +139,39 @@ export const realApi = {
     const path = "/articles/" + encodeURIComponent(id) + "/vote";
     try {
       const res = await http("POST", path, { option });
+      // 집계가 담기지 않은 응답이면 상세를 다시 읽어 실제 값을 맞춘다.
+      if (!res || res.voteCountA == null || res.voteCountB == null) {
+        return { ...(await this.readVoteState(id, option)), changed: true };
+      }
       return {
         votesA: toCount(res.voteCountA),
         votesB: toCount(res.voteCountB),
         myVote: toSide(res.myVote) || option,
         changed: res.changed !== false,
-        wasFirst: !!res.wasFirst,
       };
     } catch (error) {
       if (error.status !== 409) throw error;
-      const current = await this.getGame(id);
-      return {
-        votesA: current.votesA,
-        votesB: current.votesB,
-        myVote: current.myVote || option,
-        changed: false,
-      };
+      return { ...(await this.readVoteState(id, option)), changed: false };
     }
+  },
+
+  async readVoteState(id, fallbackSide) {
+    const current = await this.getGame(id);
+    return {
+      votesA: current.votesA,
+      votesB: current.votesB,
+      myVote: current.myVote || fallbackSide,
+    };
   },
 
   async toggleLike(id, currentlyLiked) {
     const path = "/articles/" + encodeURIComponent(id) + "/like";
     try {
       const res = await http(currentlyLiked ? "DELETE" : "POST", path);
+      if (!res || res.likeCount == null) {
+        const current = await this.getGame(id);
+        return { liked: current.liked, likes: current.likes };
+      }
       return { liked: !!res.isLiked, likes: toCount(res.likeCount) };
     } catch (error) {
       if (error.status !== 409) throw error;
@@ -172,6 +182,7 @@ export const realApi = {
 
   async getMe() {
     const res = await http("GET", "/me/basic-info");
+    if (!res) throw new Error("회원 정보를 불러오지 못했어요");
     return {
       email: res.email,
       nick: res.nickname,
@@ -183,8 +194,12 @@ export const realApi = {
     const patch = {};
     if (nick != null) patch.nickname = nick;
     if (profileImageUrl != null) patch.profileImageUrl = profileImageUrl;
-    await http("PATCH", "/me/basic-info", patch);
-    return { nick, profileImageUrl };
+    const res = (await http("PATCH", "/me/basic-info", patch)) || {};
+    // 서버가 정규화한 값이 있으면 그쪽을 신뢰한다.
+    return {
+      nick: res.nickname ?? nick,
+      profileImageUrl: res.profileImageUrl ?? profileImageUrl,
+    };
   },
 
   async changePassword({ nowPassword, nextPassword, checkNextPassword }) {
@@ -203,7 +218,7 @@ export const realApi = {
 
   async getSummary() {
     try {
-      const res = await http("GET", "/articles?size=10");
+      const res = (await http("GET", "/articles?size=10")) || {};
       const totalVotes = (res.articles || []).reduce(
         (sum, article) => sum + toCount(article.voteCountA) + toCount(article.voteCountB),
         0,
@@ -215,8 +230,8 @@ export const realApi = {
   },
 
   async addComment(id, content) {
-    const res = await http("POST", "/articles/" + encodeURIComponent(id) + "/comments", { content });
-    return { id: res.commentUuid };
+    const res = (await http("POST", "/articles/" + encodeURIComponent(id) + "/comments", { content })) || {};
+    return { id: res.commentUuid ?? null };
   },
 
   async updateComment(id, commentId, content) {

@@ -1,26 +1,20 @@
 import { useEffect, useState } from "react";
-
-const listeners = new Set();
-
-export function toast(message) {
-  listeners.forEach((listener) => listener(message));
-}
+import { subscribeToast } from "../toast.js";
 
 export default function Toast() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     let timer;
-    const listener = (nextMessage) => {
+    const unsubscribe = subscribeToast((nextMessage) => {
       setMessage(nextMessage);
       clearTimeout(timer);
       timer = setTimeout(() => setMessage(""), 2200);
-    };
+    });
 
-    listeners.add(listener);
     return () => {
       clearTimeout(timer);
-      listeners.delete(listener);
+      unsubscribe();
     };
   }, []);
 
