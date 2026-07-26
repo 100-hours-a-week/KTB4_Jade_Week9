@@ -122,7 +122,7 @@ function GameCard({ game }) {
           <Avatar
             reference={game.profileImageUrl}
             fallback={game.author.slice(0, 1)}
-            style={{ backgroundColor: getAvatarBackground(game.authorId) }}
+            style={{ backgroundColor: getAvatarBackground(game.author) }}
           />
           <span className="name">{game.author}</span>
           <span className="date">· {game.date}</span>

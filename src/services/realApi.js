@@ -1,44 +1,65 @@
+import { toLocalDate } from "../shared/utils.js";
 import { http } from "./httpClient.js";
 import { saveLoginStatus, readLoginStatus, clearLoginStatus, appendDebugLog, readAuthCookieState } from "./loginStatusCache.js";
 
-function notImplemented(what) {
-  const error = new Error((what || "이 기능") + "은(는) 아직 백엔드에 구현되지 않았어요.");
-  error.code = "NOT_IMPLEMENTED";
-  return error;
+function toCount(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function toSide(value) {
+  if (value == null) return null;
+  const side = String(value).trim().toUpperCase();
+  return side === "A" || side === "B" ? side : null;
 }
 
 function mapSummary(article) {
   return {
-    id: article.articleUuid, question: article.title,
-    optionA: null, optionB: null, votesA: 0, votesB: 0, myVote: null,
-    likes: article.likeCount || 0, liked: !!(article.isLiked ?? article.liked),
-    commentCount: article.commentCount || 0, viewCount: article.viewCount || 0,
-    author: article.writer, authorId: article.writer, profileImageUrl: article.profileImageUrl,
-    date: (article.createdAt || "").slice(0, 10),
+    id: article.articleUuid,
+    question: article.title,
+    optionA: article.optionA || "",
+    optionB: article.optionB || "",
+    votesA: toCount(article.voteCountA),
+    votesB: toCount(article.voteCountB),
+    myVote: toSide(article.myVote),
+    likes: toCount(article.likeCount),
+    liked: !!article.isLiked,
+    author: article.writer,
+    isMine: !!article.isMine,
+    profileImageUrl: article.profileImageUrl,
+    date: toLocalDate(article.createdAt),
   };
 }
 
 function mapComment(comment) {
   return {
     id: comment.commentUuid, content: comment.content,
-    author: comment.writer, authorId: comment.userUuid, profileImageUrl: comment.profileImageUrl,
-    date: (comment.createdAt || "").slice(0, 10),
+    author: comment.writer, isMine: !!comment.isMine, profileImageUrl: comment.profileImageUrl,
+    date: toLocalDate(comment.createdAt),
   };
 }
 
 function mapDetail(article, uuid) {
+  const comments = (article.comments || []).map(mapComment);
   return {
-    id: uuid, question: article.title, content: article.content,
-    optionA: null, optionB: null, votesA: 0, votesB: 0, myVote: null,
-    likes: article.likeCount || 0, liked: !!article.isLiked,
-    commentCount: article.commentCount || 0, viewCount: article.viewCount || 0,
-    author: article.writer, authorId: article.userUuid, imageUrl: article.imageUrl,
-    date: (article.createdAt || "").slice(0, 10),
-    comments: (article.comments || []).map(mapComment),
+    id: uuid,
+    question: article.title,
+    optionA: article.optionA || "",
+    optionB: article.optionB || "",
+    votesA: toCount(article.voteCountA),
+    votesB: toCount(article.voteCountB),
+    myVote: toSide(article.myVote),
+    likes: toCount(article.likeCount),
+    liked: !!article.isLiked,
+    commentCount: comments.length,
+    author: article.writer,
+    isMine: !!article.isMine,
+    profileImageUrl: article.profileImageUrl,
+    date: toLocalDate(article.createdAt),
+    comments,
   };
 }
 
-/** 실제 백엔드(KTB4_Jade_Week4)와 통신하는 API. */
 export const realApi = {
   async login(email, password) {
     const res = await http("POST", "/auth/sign-in", { email, password });
@@ -88,22 +109,20 @@ export const realApi = {
     return mapDetail(res, id);
   },
 
-  async createGame({ question, content, imageUrl }) {
-    console.warn("[반틈] 백엔드 Article에 optionA/B 필드가 없어 A/B 선택지는 저장되지 않습니다. 가이드 (A) 참고.");
+  async createGame({ question, optionA, optionB }) {
     const res = await http("POST", "/articles", {
       title: question,
-      content: content != null ? content : "",
-      imageUrl: imageUrl || null,
+      optionA,
+      optionB,
     });
     return { id: res.articleUuid };
   },
 
-  async updateGame(id, { question, content, imageUrl }) {
-    console.warn("[반틈] 백엔드 Article에 optionA/B 필드가 없어 A/B 선택지는 저장되지 않습니다. 가이드 (A) 참고.");
+  async updateGame(id, { question, optionA, optionB }) {
     const patch = {};
     if (question != null) patch.title = question;
-    if (content != null) patch.content = content;
-    if (imageUrl != null) patch.imageUrl = imageUrl;
+    if (optionA != null) patch.optionA = optionA;
+    if (optionB != null) patch.optionB = optionB;
     await http("PATCH", "/articles/" + encodeURIComponent(id), patch);
     return { id };
   },
@@ -113,19 +132,51 @@ export const realApi = {
     return true;
   },
 
-  async vote() {
-    throw notImplemented("투표");
+  async vote(id, side) {
+    const option = toSide(side);
+    if (!option) throw new Error("A 또는 B만 선택할 수 있어요");
+
+    const path = "/articles/" + encodeURIComponent(id) + "/vote";
+    try {
+      const res = await http("POST", path, { option });
+      return {
+        votesA: toCount(res.voteCountA),
+        votesB: toCount(res.voteCountB),
+        myVote: toSide(res.myVote) || option,
+        changed: res.changed !== false,
+        wasFirst: !!res.wasFirst,
+      };
+    } catch (error) {
+      if (error.status !== 409) throw error;
+      const current = await this.getGame(id);
+      return {
+        votesA: current.votesA,
+        votesB: current.votesB,
+        myVote: current.myVote || option,
+        changed: false,
+      };
+    }
   },
 
   async toggleLike(id, currentlyLiked) {
     const path = "/articles/" + encodeURIComponent(id) + "/like";
-    const res = await http(currentlyLiked ? "DELETE" : "POST", path);
-    return { liked: res.isLiked, likes: res.likeCount };
+    try {
+      const res = await http(currentlyLiked ? "DELETE" : "POST", path);
+      return { liked: !!res.isLiked, likes: toCount(res.likeCount) };
+    } catch (error) {
+      if (error.status !== 409) throw error;
+      const current = await this.getGame(id);
+      return { liked: current.liked, likes: current.likes };
+    }
   },
 
   async getMe() {
     const res = await http("GET", "/me/basic-info");
-    return { email: res.email, nick: res.nickname, id: res.memberUuid, profileImageUrl: res.profileImageUrl };
+    return {
+      email: res.email,
+      nick: res.nickname,
+      profileImageUrl: res.profileImageUrl,
+    };
   },
 
   async updateMe({ nick, profileImageUrl }) {
@@ -151,7 +202,16 @@ export const realApi = {
   },
 
   async getSummary() {
-    return { totalVotes: 0 };
+    try {
+      const res = await http("GET", "/articles?size=10");
+      const totalVotes = (res.articles || []).reduce(
+        (sum, article) => sum + toCount(article.voteCountA) + toCount(article.voteCountB),
+        0,
+      );
+      return { totalVotes };
+    } catch (error) {
+      return { totalVotes: 0 };
+    }
   },
 
   async addComment(id, content) {

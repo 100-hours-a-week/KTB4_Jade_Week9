@@ -11,6 +11,7 @@ import useCurrentUser from "../../shared/hooks/useCurrentUser.js";
 import {
   formatNumber,
   getAvatarBackground,
+  toLocalDate,
 } from "../../shared/utils.js";
 
 export default function GameDetailPage() {
@@ -47,11 +48,12 @@ export default function GameDetailPage() {
   const total = game.votesA + game.votesB;
   const percentA = total ? Math.round((game.votesA / total) * 100) : 50;
   const percentB = 100 - percentA;
-  const isOwner = user && game.authorId === user.id;
+  const isOwner = game.isMine;
 
   const vote = async (side) => {
     if (pending) return;
 
+    const previousVote = game.myVote;
     setPending(true);
     try {
       const result = await api.vote(id, side);
@@ -64,9 +66,9 @@ export default function GameDetailPage() {
       toast(
         result.changed === false
           ? `이미 ${side}쪽으로 갈랐잖아`
-          : result.wasFirst
-            ? `${side}로 반틈! ⚡`
-            : `${side}로 갈아탔다`,
+          : previousVote
+            ? `${side}로 갈아탔다`
+            : `${side}로 반틈! ⚡`,
       );
     } catch (error) {
       toast(error.message || "투표에 실패했어요");
@@ -110,15 +112,15 @@ export default function GameDetailPage() {
     try {
       const created = await api.addComment(id, content);
       setComments((current) => [
-        ...current,
         {
           id: created.id,
           content,
           author: user.nick,
-          authorId: user.id,
+          isMine: true,
           profileImageUrl: user.profileImageUrl,
-          date: new Date().toISOString().slice(0, 10),
+          date: toLocalDate(new Date().toISOString()),
         },
+        ...current,
       ]);
       setGame((current) => ({ ...current, commentCount: current.commentCount + 1 }));
       setCommentText("");
@@ -171,7 +173,7 @@ export default function GameDetailPage() {
             <Avatar
               reference={game.profileImageUrl}
               fallback={game.author.slice(0, 1)}
-              style={{ backgroundColor: getAvatarBackground(game.authorId) }}
+              style={{ backgroundColor: getAvatarBackground(game.author) }}
             />
             <span className="name">{game.author}</span>
             <span className="date">· {game.date}</span>
@@ -231,11 +233,11 @@ export default function GameDetailPage() {
           </div>
         </div>
         <div className="comment-section">
-          <h2 className="comment-title">댓글 {formatNumber(comments.length)}</h2>
+          <h2 className="comment-title">댓글 {formatNumber(game.commentCount)}</h2>
           <form className="comment-form" onSubmit={submitComment}>
             <textarea
               className="textarea"
-              rows="3"
+              rows="2"
               value={commentText}
               onChange={(event) => setCommentText(event.target.value)}
               placeholder="댓글을 남겨주세요!"
@@ -256,7 +258,7 @@ export default function GameDetailPage() {
                 <Avatar
                   reference={comment.profileImageUrl}
                   fallback={comment.author.slice(0, 1)}
-                  style={{ backgroundColor: getAvatarBackground(comment.authorId) }}
+                  style={{ backgroundColor: getAvatarBackground(comment.author) }}
                 />
                 <div className="comment-body">
                   <div className="comment-meta">
@@ -289,7 +291,7 @@ export default function GameDetailPage() {
                     <p className="comment-content">{comment.content}</p>
                   )}
                 </div>
-                {user && comment.authorId === user.id && editingCommentId !== comment.id && (
+                {comment.isMine && editingCommentId !== comment.id && (
                   <div className="comment-actions">
                     <button
                       type="button"
@@ -361,12 +363,10 @@ function VoteSide({
     >
       <div className="tag-lbl">{label}</div>
       <div className="opt">{option}</div>
-      {showResult && (
-        <div className="result">
-          <div className="pct">{percent}%</div>
-          <div className="votes">{formatNumber(votes)}표</div>
-        </div>
-      )}
+      <div className={`result${showResult ? " show" : ""}`} aria-hidden={!showResult}>
+        <div className="pct">{percent}%</div>
+        <div className="votes">{formatNumber(votes)}표</div>
+      </div>
     </button>
   );
 }

@@ -24,7 +24,7 @@ export default function GameFormPage({ edit = false }) {
     api
       .getGame(id)
       .then((game) => {
-        if (game.authorId !== user.id) {
+        if (!game.isMine) {
           toast("작성자만 수정할 수 있어요");
           navigate(`/games/${id}`, { replace: true });
           return;
@@ -75,12 +75,12 @@ export default function GameFormPage({ edit = false }) {
           <Field
             label="질문"
             required
-            hint="최대 40자, 잔인할수록 잘 반틈"
+            hint="최대 26자, 잔인할수록 잘 반틈"
           >
             <textarea
               className="textarea"
               rows="2"
-              maxLength="40"
+              maxLength="26"
               value={form.question}
               onChange={(event) =>
                 setForm({ ...form, question: event.target.value })
@@ -124,6 +124,7 @@ function OptionInput({ side, value, onChange }) {
       </label>
       <input
         className="input"
+        maxLength="15"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={`${side === "A" ? "첫" : "두"} 번째 선택지를 입력하세요`}

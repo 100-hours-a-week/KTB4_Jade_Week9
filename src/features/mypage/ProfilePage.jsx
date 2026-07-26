@@ -9,6 +9,7 @@ import Shell from "../../shared/components/Shell.jsx";
 import { toast } from "../../shared/components/Toast.jsx";
 import useCurrentUser from "../../shared/hooks/useCurrentUser.js";
 import useObjectUrl from "../../shared/hooks/useObjectUrl.js";
+import { NICKNAME_PATTERN } from "../../shared/utils.js";
 
 export default function ProfilePage() {
   const navigate = useNavigate();
@@ -49,6 +50,12 @@ export default function ProfilePage() {
 
   const submit = async (event) => {
     event.preventDefault();
+
+    if (!NICKNAME_PATTERN.test(nick.trim())) {
+      toast("닉네임은 띄어쓰기 없이 1~10자로 입력해 줘");
+      return;
+    }
+
     setPending(true);
     let nextImage;
 
@@ -119,7 +126,7 @@ export default function ProfilePage() {
           </Field>
           <Field
             label="닉네임"
-            hint="2~10자, 띄어쓰기 없이 입력해 주세요"
+            hint="1~10자, 띄어쓰기 없이 입력해 주세요"
           >
             <input
               className="input"

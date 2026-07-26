@@ -7,6 +7,7 @@ import Shell from "../../shared/components/Shell.jsx";
 import { toast } from "../../shared/components/Toast.jsx";
 import {
   EMAIL_PATTERN,
+  NICKNAME_PATTERN,
   PASSWORD_PATTERN,
 } from "../../shared/utils.js";
 
@@ -56,11 +57,15 @@ export default function SignupPage() {
       return;
     }
     if (!PASSWORD_PATTERN.test(form.password)) {
-      toast("비밀번호는 8자 이상, 대소문자·숫자·특수문자를 포함해야 해요");
+      toast("비밀번호는 8~20자, 대소문자·숫자·특수문자를 포함해야 해요");
       return;
     }
     if (form.password !== form.confirm) {
       toast("동일한 비밀번호를 입력해 주세요");
+      return;
+    }
+    if (!NICKNAME_PATTERN.test(form.nick.trim())) {
+      toast("닉네임은 띄어쓰기 없이 1~10자로 입력해 줘");
       return;
     }
 
@@ -160,7 +165,7 @@ export default function SignupPage() {
           <Field
             label="닉네임"
             required
-            hint="2~10자, 띄어쓰기 없이 입력해 주세요"
+            hint="1~10자, 띄어쓰기 없이 입력해 주세요"
           >
             <input
               className="input"

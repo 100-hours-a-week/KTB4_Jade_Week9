@@ -15,7 +15,6 @@ async function ensureCsrf() {
   csrfReady = true;
 }
 
-/** 실제 백엔드로 보내는 fetch 요청. CSRF 토큰 첨부, 401이면 토큰 재발급 후 한 번 재시도한다. */
 export async function http(method, path, body, isRetry) {
   const headers = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";

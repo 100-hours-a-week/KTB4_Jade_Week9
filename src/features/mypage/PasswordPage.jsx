@@ -70,7 +70,7 @@ export default function PasswordPage() {
           </Field>
           <Field
             label="새 비밀번호"
-            hint="8자 이상, 대소문자·숫자·특수문자 포함"
+            hint="8~20자, 대소문자·숫자·특수문자 포함"
           >
             <input
               className="input"
