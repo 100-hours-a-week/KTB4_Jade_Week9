@@ -11,6 +11,26 @@ import {
   PASSWORD_PATTERN,
 } from "../../shared/utils.js";
 
+function getSignupErrorMessage(error) {
+  const fields = error?.fields;
+  if (!fields || typeof fields !== "object") {
+    return error?.message || "회원가입에 실패했어요";
+  }
+
+  const messages = Object.values(fields)
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) =>
+      typeof value === "string" ? value : value?.message,
+    )
+    .filter((message) => typeof message === "string" && message.trim())
+    .map((message) => message.trim());
+  const uniqueMessages = [...new Set(messages)];
+
+  return uniqueMessages.length
+    ? uniqueMessages.join("\n")
+    : error?.message || "회원가입에 실패했어요";
+}
+
 export default function SignupPage() {
   const navigate = useNavigate();
   const inputRef = useRef(null);
@@ -48,11 +68,11 @@ export default function SignupPage() {
     event.preventDefault();
 
     if (!form.email || !form.password || !form.nick || !avatar) {
-      toast("프로필 사진을 포함한 필수 항목을 모두 입력해 줘");
+      toast("프로필 사진을 포함한 필수 항목을 모두 입력해 주세요");
       return;
     }
     if (!EMAIL_PATTERN.test(form.email.trim())) {
-      toast("올바른 이메일 형식으로 입력해 줘");
+      toast("올바른 이메일 형식으로 입력해 주세요");
       return;
     }
     if (!PASSWORD_PATTERN.test(form.password)) {
@@ -83,7 +103,7 @@ export default function SignupPage() {
       navigate("/", { replace: true });
     } catch (error) {
       if (profileImageUrl) await profileImages.remove(profileImageUrl);
-      toast(error.message || "회원가입에 실패했어요");
+      toast(getSignupErrorMessage(error));
     } finally {
       setPending(false);
     }

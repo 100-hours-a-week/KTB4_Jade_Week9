@@ -414,7 +414,7 @@ label.lbl .req { color: var(--a); }
 /* ---------- 모달 ---------- */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 90; background: rgba(17,17,17,0.35);
-  display: flex; align-items: flex-start; justify-content: center; padding-top: 120px;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .modal-overlay[hidden] { display: none; }
 .modal {
@@ -435,6 +435,7 @@ label.lbl .req { color: var(--a); }
   background: var(--ink); color: var(--accent); padding: 10px 24px;
   border: 2.5px solid var(--ink); border-radius: 100px; font-size: 14px; font-weight: 900;
   box-shadow: 4px 4px 0 rgba(17,17,17,0.25); animation: toastUp 0.25s ease; z-index: 100;
+  white-space: pre-line; text-align: center;
 }
 .toast[hidden] { display: none; }
 
