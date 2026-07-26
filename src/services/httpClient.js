@@ -12,8 +12,9 @@ function readCookie(name) {
 let csrfReady = false;
 async function ensureCsrf() {
   if (csrfReady && readCookie("XSRF-TOKEN")) return;
-  await fetch(config.API_BASE + "/auth/csrf", { credentials: "include" });
-  csrfReady = true;
+  // 204 + XSRF-TOKEN 쿠키를 기대한다. 실패하면 다음 요청에서 다시 시도한다.
+  const response = await fetch(config.API_BASE + "/auth/csrf", { credentials: "include" });
+  csrfReady = response.ok;
 }
 
 export async function http(method, path, body, isRetry) {
@@ -40,16 +41,21 @@ export async function http(method, path, body, isRetry) {
     if (!isAuthPath) notifyUnauthorized();
   }
 
+  // CSRF 토큰이 만료되면 403(AUTH-403-002)이 온다. 토큰을 새로 받아 한 번만 다시 시도한다.
+  if (response.status === 403 && !isRetry && MUTATING_METHODS.includes(method)) {
+    csrfReady = false;
+    return http(method, path, body, true);
+  }
+
   if (!response.ok) throw await toApiError(response);
   return parseBody(response);
 }
 
 async function retryAfterReissue(method, path, body) {
   try {
-    await fetch(config.API_BASE + "/auth/token/re-issue", {
-      method: "POST",
-      credentials: "include",
-    });
+    // 재발급도 POST라 CSRF 헤더가 필요하다. 직접 fetch하면 403으로 죽는다.
+    // 재발급 경로의 401은 위에서 재귀 대상에서 빠지므로 isRetry를 넘기지 않아도 안전하다.
+    await http("POST", "/auth/token/re-issue");
   } catch (e) {
     // 재발급 실패는 아래 재시도의 401로 드러난다.
   }

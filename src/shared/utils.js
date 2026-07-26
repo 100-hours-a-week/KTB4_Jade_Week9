@@ -7,14 +7,12 @@ export function formatNumber(value) {
   return Number(value || 0).toLocaleString();
 }
 
-const HAS_TIMEZONE = /(?:Z|[+-]\d{2}:?\d{2})$/;
-
-// 서버는 UTC를 오프셋 없이 내려준다. Z를 붙여 UTC로 파싱한 뒤 뷰어의 로컬 날짜로 변환.
+// 서버는 createdAt을 Z가 붙은 UTC로 내려준다. 그대로 파싱해 뷰어의 로컬 날짜로 변환.
 export function toLocalDate(createdAt) {
   if (!createdAt) return "";
 
   const text = String(createdAt);
-  const parsed = new Date(HAS_TIMEZONE.test(text) ? text : text + "Z");
+  const parsed = new Date(text);
   if (Number.isNaN(parsed.getTime())) return text.slice(0, 10);
 
   return parsed.toLocaleDateString("sv-SE");

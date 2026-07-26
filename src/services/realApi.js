@@ -174,7 +174,10 @@ export const realApi = {
       }
       return { liked: !!res.isLiked, likes: toCount(res.likeCount) };
     } catch (error) {
-      if (error.status !== 409) throw error;
+      // 409는 동시 요청, 400(ARTICLE_LIKE-400-001)은 이미 취소된 좋아요를 또 취소한 경우다.
+      // 둘 다 화면 상태가 서버와 어긋난 것이므로 실제 값을 다시 읽어 맞춘다.
+      const isDesync = error.status === 409 || error.serverCode === "ARTICLE_LIKE-400-001";
+      if (!isDesync) throw error;
       const current = await this.getGame(id);
       return { liked: current.liked, likes: current.likes };
     }
