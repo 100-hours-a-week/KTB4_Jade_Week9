@@ -1,12 +1,10 @@
-import useObjectUrl from "../hooks/useObjectUrl.js";
-
 export default function Avatar({
   reference,
   fallback,
   className = "ava",
   style,
 }) {
-  const url = useObjectUrl(reference);
+  const url = typeof reference === "string" && reference.startsWith("http") ? reference : "";
 
   return (
     <span

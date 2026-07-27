@@ -1,33 +1,13 @@
-const DB_NAME = "bangal.profile-images";
-const STORE_NAME = "images";
-const PREFIX = "local-profile:";
+import { httpPublic } from "./httpClient.js";
+
 export const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_DIMENSION = 512;
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
-// 선택한 파일이 규격에 맞는지 검사한다. 통과하면 null, 아니면 사용자에게 보여줄 메시지.
 export function validateImageFile(file) {
   if (!file || !file.type.startsWith("image/")) return "이미지 파일만 선택해 주세요";
   if (file.size > MAX_FILE_SIZE) return "5MB 이하 이미지만 선택해 주세요";
   return null;
-}
-
-function openDb() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-function requestToPromise(request) {
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
 }
 
 function loadImage(file) {
@@ -62,61 +42,34 @@ async function compress(file) {
   context.fillRect(0, 0, width, height);
   context.drawImage(image, 0, 0, width, height);
 
-  return new Promise((resolve, reject) => {
+  const blob = await new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("이미지를 저장할 수 없어요"))),
-      "image/jpeg",
-      0.82,
+      (result) => (result ? resolve(result) : reject(new Error("이미지를 처리할 수 없어요"))),
+      "image/webp",
+      0.8,
     );
   });
+
+  if (!ALLOWED_TYPES.includes(blob.type)) throw new Error("지원하지 않는 이미지 형식이에요");
+  return blob;
 }
 
-async function save(file) {
+async function upload(file) {
   const blob = await compress(file);
-  const id = crypto.randomUUID();
-  const db = await openDb();
-  const transaction = db.transaction(STORE_NAME, "readwrite");
-  transaction.objectStore(STORE_NAME).put(blob, id);
-  await new Promise((resolve, reject) => {
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
+
+  const { uploadUrl, fileUrl } = (await httpPublic("POST", "/files/image-uploads", {
+    contentType: blob.type,
+  })) || {};
+  if (!uploadUrl || !fileUrl) throw new Error("이미지 업로드 주소를 받지 못했어요");
+
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": blob.type },
+    body: blob,
   });
-  db.close();
-  return PREFIX + id;
+  if (!response.ok) throw new Error("이미지 업로드에 실패했어요");
+
+  return fileUrl;
 }
 
-function isLocal(reference) {
-  return typeof reference === "string" && reference.startsWith(PREFIX);
-}
-
-async function get(reference) {
-  if (!isLocal(reference)) return null;
-  const db = await openDb();
-  const transaction = db.transaction(STORE_NAME, "readonly");
-  const blob = await requestToPromise(transaction.objectStore(STORE_NAME).get(reference.slice(PREFIX.length)));
-  db.close();
-  return blob || null;
-}
-
-async function remove(reference) {
-  if (!isLocal(reference)) return;
-  const db = await openDb();
-  const transaction = db.transaction(STORE_NAME, "readwrite");
-  transaction.objectStore(STORE_NAME).delete(reference.slice(PREFIX.length));
-  await new Promise((resolve, reject) => {
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
-  });
-  db.close();
-}
-
-async function resolve(reference) {
-  if (!reference) return null;
-  if (!isLocal(reference)) return reference;
-  const blob = await get(reference);
-  return blob ? URL.createObjectURL(blob) : null;
-}
-
-export const profileImages = { save, remove, resolve, isLocal };
+export const profileImages = { upload };
