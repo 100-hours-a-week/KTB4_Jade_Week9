@@ -114,7 +114,6 @@ export const realApi = {
       optionA,
       optionB,
     })) || {};
-    // 서버가 본문 없이 성공만 알릴 수도 있다. 생성 자체는 성공이므로 id 없음을 그대로 알린다.
     return { id: res.articleUuid ?? null };
   },
 
@@ -139,7 +138,6 @@ export const realApi = {
     const path = "/articles/" + encodeURIComponent(id) + "/vote";
     try {
       const res = await http("POST", path, { option });
-      // 집계가 담기지 않은 응답이면 상세를 다시 읽어 실제 값을 맞춘다.
       if (!res || res.voteCountA == null || res.voteCountB == null) {
         return { ...(await this.readVoteState(id, option)), changed: true };
       }
@@ -174,8 +172,6 @@ export const realApi = {
       }
       return { liked: !!res.isLiked, likes: toCount(res.likeCount) };
     } catch (error) {
-      // 409는 동시 요청, 400(ARTICLE_LIKE-400-001)은 이미 취소된 좋아요를 또 취소한 경우다.
-      // 둘 다 화면 상태가 서버와 어긋난 것이므로 실제 값을 다시 읽어 맞춘다.
       const isDesync = error.status === 409 || error.serverCode === "ARTICLE_LIKE-400-001";
       if (!isDesync) throw error;
       const current = await this.getGame(id);
@@ -198,7 +194,6 @@ export const realApi = {
     if (nick != null) patch.nickname = nick;
     if (profileImageUrl != null) patch.profileImageUrl = profileImageUrl;
     const res = (await http("PATCH", "/me/basic-info", patch)) || {};
-    // 서버가 정규화한 값이 있으면 그쪽을 신뢰한다.
     return {
       nick: res.nickname ?? nick,
       profileImageUrl: res.profileImageUrl ?? profileImageUrl,

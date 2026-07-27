@@ -26,8 +26,8 @@ export default [
         "warn",
         { allowConstantExport: true },
       ],
-      // catch 블록에서 의도적으로 삼키는 에러는 허용한다.
       "no-unused-vars": ["error", { caughtErrors: "none" }],
+      "no-empty": ["error", { allowEmptyCatch: true }],
     },
   },
 ];

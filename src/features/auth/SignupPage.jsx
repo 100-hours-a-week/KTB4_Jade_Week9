@@ -89,9 +89,8 @@ export default function SignupPage() {
     }
 
     setPending(true);
-    let profileImageUrl;
     try {
-      profileImageUrl = await profileImages.save(avatar);
+      const profileImageUrl = await profileImages.upload(avatar);
       await api.signup({
         email: form.email.trim(),
         password: form.password,
@@ -102,7 +101,6 @@ export default function SignupPage() {
       toast("가입 완료! 로그인해 줘 ⚡");
       navigate("/", { replace: true });
     } catch (error) {
-      if (profileImageUrl) await profileImages.remove(profileImageUrl);
       toast(getSignupErrorMessage(error));
     } finally {
       setPending(false);
