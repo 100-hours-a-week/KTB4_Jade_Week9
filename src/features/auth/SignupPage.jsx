@@ -4,32 +4,13 @@ import { api } from "../../services/api.js";
 import { profileImages, validateImageFile } from "../../services/profileImages.js";
 import Field from "../../shared/components/Field.jsx";
 import Shell from "../../shared/components/Shell.jsx";
+import { getFieldErrorMessage } from "../../shared/fieldErrors.js";
 import { toast } from "../../shared/toast.js";
 import {
   EMAIL_PATTERN,
   NICKNAME_PATTERN,
   PASSWORD_PATTERN,
 } from "../../shared/utils.js";
-
-function getSignupErrorMessage(error) {
-  const fields = error?.fields;
-  if (!fields || typeof fields !== "object") {
-    return error?.message || "회원가입에 실패했어요";
-  }
-
-  const messages = Object.values(fields)
-    .flatMap((value) => (Array.isArray(value) ? value : [value]))
-    .map((value) =>
-      typeof value === "string" ? value : value?.message,
-    )
-    .filter((message) => typeof message === "string" && message.trim())
-    .map((message) => message.trim());
-  const uniqueMessages = [...new Set(messages)];
-
-  return uniqueMessages.length
-    ? uniqueMessages.join("\n")
-    : error?.message || "회원가입에 실패했어요";
-}
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -101,7 +82,7 @@ export default function SignupPage() {
       toast("가입 완료! 로그인해 줘 ⚡");
       navigate("/", { replace: true });
     } catch (error) {
-      toast(getSignupErrorMessage(error));
+      toast(getFieldErrorMessage(error, "회원가입에 실패했어요"));
     } finally {
       setPending(false);
     }
