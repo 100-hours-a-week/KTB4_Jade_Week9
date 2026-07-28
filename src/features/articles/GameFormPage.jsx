@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../services/api.js";
 import Field from "../../shared/components/Field.jsx";
 import Loading from "../../shared/components/Loading.jsx";
+import Modal from "../../shared/components/Modal.jsx";
 import Shell from "../../shared/components/Shell.jsx";
 import { toast } from "../../shared/toast.js";
 import useCurrentUser from "../../shared/hooks/useCurrentUser.js";
@@ -18,6 +19,7 @@ export default function GameFormPage({ edit = false }) {
   });
   const [gameLoaded, setGameLoaded] = useState(!edit);
   const [pending, setPending] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     // 회원 정보를 못 읽었으면 불러올 수 없다. 세션 처리에 맡기고 여기선 아무것도 하지 않는다.
@@ -84,6 +86,19 @@ export default function GameFormPage({ edit = false }) {
     }
   };
 
+  const remove = async () => {
+    setDeleteModalOpen(false);
+    setPending(true);
+    try {
+      await api.deleteGame(id);
+      toast("반틈 삭제 완료");
+      navigate("/games", { replace: true });
+    } catch (error) {
+      toast(error.message || "삭제에 실패했어요");
+      setPending(false);
+    }
+  };
+
   if (loading || (edit && user && !gameLoaded)) return <Loading />;
 
   return (
@@ -131,7 +146,27 @@ export default function GameFormPage({ edit = false }) {
                 : "반틈 던지기 ⚡"}
           </button>
         </form>
+        {edit && (
+          <button
+            type="button"
+            className="link-danger"
+            disabled={pending}
+            onClick={() => setDeleteModalOpen(true)}
+          >
+            이 반틈 삭제하기
+          </button>
+        )}
       </div>
+      {deleteModalOpen && (
+        <Modal
+          title="게시글을 삭제하시겠습니까?"
+          text="삭제한 내용은 복구할 수 없습니다."
+          cancel="취소"
+          confirm="확인"
+          onCancel={() => setDeleteModalOpen(false)}
+          onConfirm={remove}
+        />
+      )}
     </Shell>
   );
 }

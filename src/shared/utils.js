@@ -7,7 +7,6 @@ export function formatNumber(value) {
   return Number(value || 0).toLocaleString();
 }
 
-// 서버는 createdAt을 Z가 붙은 UTC로 내려준다. 그대로 파싱해 뷰어의 로컬 날짜로 변환.
 export function toLocalDate(createdAt) {
   if (!createdAt) return "";
 

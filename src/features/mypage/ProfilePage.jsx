@@ -8,15 +8,13 @@ import Modal from "../../shared/components/Modal.jsx";
 import Shell from "../../shared/components/Shell.jsx";
 import { toast } from "../../shared/toast.js";
 import useCurrentUser from "../../shared/hooks/useCurrentUser.js";
-import useObjectUrl from "../../shared/hooks/useObjectUrl.js";
 import { NICKNAME_PATTERN } from "../../shared/utils.js";
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const { loading, user } = useCurrentUser();
-  const currentUrl = useObjectUrl(user?.profileImageUrl);
-  // null이면 아직 손대지 않았다는 뜻. 서버에서 온 닉네임을 그대로 보여준다.
+  const currentUrl = user?.profileImageUrl || "";
   const [nickInput, setNickInput] = useState(null);
   const [avatar, setAvatar] = useState(null);
   const [preview, setPreview] = useState("");
@@ -54,21 +52,16 @@ export default function ProfilePage() {
     }
 
     setPending(true);
-    let nextImage;
 
     try {
-      if (avatar) nextImage = await profileImages.save(avatar);
+      const nextImage = avatar ? await profileImages.upload(avatar) : undefined;
       await api.updateMe({
         nick: nick.trim(),
         profileImageUrl: nextImage,
       });
-      if (nextImage && profileImages.isLocal(user.profileImageUrl)) {
-        await profileImages.remove(user.profileImageUrl);
-      }
       toast("회원정보 수정 완료");
       navigate("/games");
     } catch (error) {
-      if (nextImage) await profileImages.remove(nextImage);
       toast(error.message || "수정에 실패했어요");
     } finally {
       setPending(false);

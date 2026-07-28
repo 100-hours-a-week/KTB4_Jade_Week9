@@ -12,7 +12,6 @@ function readCookie(name) {
 let csrfReady = false;
 async function ensureCsrf() {
   if (csrfReady && readCookie("XSRF-TOKEN")) return;
-  // 204 + XSRF-TOKEN 쿠키를 기대한다. 실패하면 다음 요청에서 다시 시도한다.
   const response = await fetch(config.API_BASE + "/auth/csrf", { credentials: "include" });
   csrfReady = response.ok;
 }
@@ -35,13 +34,10 @@ export async function http(method, path, body, isRetry) {
 
   const isAuthPath = AUTH_PATHS.includes(path);
   if (response.status === 401) {
-    // 인증 경로의 401은 자격 증명 오류이므로 재발급 대상이 아니다.
     if (!isRetry && !isAuthPath) return retryAfterReissue(method, path, body);
-    // 재발급까지 실패했다면 세션이 끝난 것으로 보고 로컬 상태를 비운다.
     if (!isAuthPath) notifyUnauthorized();
   }
 
-  // CSRF 토큰이 만료되면 403(AUTH-403-002)이 온다. 토큰을 새로 받아 한 번만 다시 시도한다.
   if (response.status === 403 && !isRetry && MUTATING_METHODS.includes(method)) {
     csrfReady = false;
     return http(method, path, body, true);
@@ -51,14 +47,21 @@ export async function http(method, path, body, isRetry) {
   return parseBody(response);
 }
 
+export async function httpPublic(method, path, body) {
+  const response = await fetch(config.API_BASE + path, {
+    method,
+    headers: body !== undefined ? { "Content-Type": "application/json" } : {},
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) throw await toApiError(response);
+  return parseBody(response);
+}
+
 async function retryAfterReissue(method, path, body) {
   try {
-    // 재발급도 POST라 CSRF 헤더가 필요하다. 직접 fetch하면 403으로 죽는다.
-    // 재발급 경로의 401은 위에서 재귀 대상에서 빠지므로 isRetry를 넘기지 않아도 안전하다.
     await http("POST", "/auth/token/re-issue");
-  } catch (e) {
-    // 재발급 실패는 아래 재시도의 401로 드러난다.
-  }
+  } catch (e) {}
   return http(method, path, body, true);
 }
 
@@ -71,9 +74,7 @@ async function toApiError(response) {
     message = responseBody.message || message;
     fields = responseBody.fields || null;
     code = responseBody.code || null;
-  } catch (e) {
-    // 본문이 없거나 JSON이 아니면 기본 메시지를 쓴다.
-  }
+  } catch (e) {}
 
   return buildError(message, response.status, fields, code);
 }
@@ -99,7 +100,6 @@ async function parseBody(response) {
   }
 
   if (!json || typeof json !== "object" || !("success" in json)) return json;
-  // 상태 코드가 2xx여도 봉투가 실패를 알리면 에러로 취급한다.
   if (json.success !== true) {
     throw buildError(json.message || "요청에 실패했어요", response.status, json.fields || null, json.code || null);
   }

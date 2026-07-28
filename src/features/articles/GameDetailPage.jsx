@@ -283,8 +283,9 @@ export default function GameDetailPage() {
                   </div>
                   {editingCommentId === comment.id ? (
                     <div className="comment-edit">
-                      <input
-                        className="input"
+                      <textarea
+                        className="textarea"
+                        rows="2"
                         value={editingText}
                         onChange={(event) => setEditingText(event.target.value)}
                       />
