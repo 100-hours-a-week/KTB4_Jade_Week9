@@ -138,7 +138,8 @@ jobs:
               \"grep '^FRONTEND_TAG=' .env\",
               \"docker compose pull frontend\",
               \"docker compose up -d --wait --wait-timeout 60 frontend\",
-              \"docker compose ps frontend\"
+              \"docker compose restart nginx\",
+              \"docker compose ps frontend nginx\"
             ]" \
             --query "Command.CommandId" \
             --output text)
@@ -216,4 +217,5 @@ jobs:
           echo "  sed -i 's/^FRONTEND_TAG=.*/FRONTEND_TAG=$PREVIOUS_TAG/' .env"
           echo "  docker compose pull frontend"
           echo "  docker compose up -d frontend"
-          echo "  docker compose ps frontend"
+          echo "  docker compose restart nginx"
+          echo "  docker compose ps frontend nginx"
