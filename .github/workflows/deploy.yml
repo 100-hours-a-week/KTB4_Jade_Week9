@@ -22,6 +22,7 @@ concurrency:
 env:
   DOCKER_IMAGE: jeongminju45/banteum-frontend
   AWS_REGION: ap-northeast-2
+  HEALTH_URL: https://banteum.click/
 
 jobs:
   deploy:
@@ -81,9 +82,9 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 배포 실패 시 어떤 태그로 되돌려야 하는지 로그에 남기기 위해
-      # 바꾸기 전 태그를 먼저 읽는다.
-      - name: Read current frontend tag
+      # 배포 실패 시 어떤 색상으로 되돌려야 하는지 로그에 남기기 위해
+      # 바꾸기 전 활성 색상과 태그를 먼저 읽는다.
+      - name: Read current active color
         id: previous
         env:
           INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
@@ -92,11 +93,12 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --comment "read current frontend tag" \
+            --comment "read current frontend active color" \
             --parameters commands="[
               \"set -e\",
               \"cd /home/ubuntu/deploy\",
-              \"grep '^FRONTEND_TAG=' .env\"
+              \"echo ACTIVE_COLOR=\$(tr -d '[:space:]' < active-color-frontend)\",
+              \"grep -E '^FRONTEND_(BLUE|GREEN)_TAG=' .env\"
             ]" \
             --query "Command.CommandId" \
             --output text)
@@ -111,41 +113,199 @@ jobs:
             --query "StandardOutputContent" \
             --output text)
 
-          PREVIOUS_TAG="${OUTPUT#*FRONTEND_TAG=}"
-          PREVIOUS_TAG="${PREVIOUS_TAG//[$'\r\n']/}"
+          echo "$OUTPUT"
 
-          echo "tag=$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
-          echo "Previous frontend tag: $PREVIOUS_TAG"
+          ACTIVE=$(sed -n 's/^ACTIVE_COLOR=//p' <<< "$OUTPUT" | tr -d '[:space:]')
+          UPPER=$(tr '[:lower:]' '[:upper:]' <<< "$ACTIVE")
+          ACTIVE_TAG=$(sed -n "s/^FRONTEND_${UPPER}_TAG=//p" <<< "$OUTPUT" | tr -d '[:space:]')
 
-      - name: Deploy frontend through SSM
+          echo "color=$ACTIVE" >> "$GITHUB_OUTPUT"
+          echo "tag=$ACTIVE_TAG" >> "$GITHUB_OUTPUT"
+          echo "Active color: $ACTIVE (tag: $ACTIVE_TAG)"
+
+      # 블루-그린 배포. 비활성 색상에만 새 이미지를 올리고, 내부 헬스 체크가
+      # 통과한 뒤에야 Nginx upstream 을 전환한다. 어느 단계에서 실패하든
+      # 현재 운영 중인 색상은 그대로 남는다.
+      - name: Deploy frontend through SSM (blue-green)
         env:
           INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
         shell: bash
         run: |
+          cat > deploy-frontend.sh <<'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          DEPLOY_DIR=/home/ubuntu/deploy
+          UPSTREAM_FILE="$DEPLOY_DIR/nginx/conf.d/frontend-upstream.conf"
+          COLOR_FILE="$DEPLOY_DIR/active-color-frontend"
+          BACKUP_DIR="$DEPLOY_DIR/.rollback/frontend"
+          HEALTH_URL="__HEALTH_URL__"
+          IMAGE_TAG="__IMAGE_TAG__"
+
+          cd "$DEPLOY_DIR"
+
+          # 백엔드 배포와 같은 EC2, 같은 .env 를 공유하므로 색상 확인부터
+          # Nginx 전환까지 전체가 하나의 임계 구역 안에서 실행되어야 한다.
+          exec 9>/var/lock/banteum-deploy.lock
+          flock -w 300 9
+
+          docker compose config -q
+          test -f "$UPSTREAM_FILE"
+          test -f "$COLOR_FILE"
+
+          # 1. 현재 활성 색상 확인. 상태 파일과 실제 Nginx 설정이 어긋난 채로
+          #    배포하면 운영 중인 컨테이너를 덮어쓸 수 있어 먼저 대조한다.
+          ACTIVE=$(tr -d '[:space:]' < "$COLOR_FILE")
+          case "$ACTIVE" in
+            blue|green) ;;
+            *) echo "invalid active color: '$ACTIVE'"; exit 1 ;;
+          esac
+
+          NGINX_ACTIVE=$(grep -oE 'frontend-(blue|green)' "$UPSTREAM_FILE" | head -1 | sed 's/^frontend-//')
+          if [ "$ACTIVE" != "$NGINX_ACTIVE" ]; then
+            echo "state mismatch: active-color=$ACTIVE nginx=$NGINX_ACTIVE"
+            echo "수동으로 두 값을 맞춘 뒤 다시 배포해야 한다."
+            exit 1
+          fi
+
+          if [ "$ACTIVE" = blue ]; then TARGET=green; else TARGET=blue; fi
+          echo "active=$ACTIVE target=$TARGET tag=$IMAGE_TAG"
+
+          # 2. 백업
+          mkdir -p "$BACKUP_DIR"
+          cp .env "$BACKUP_DIR/env"
+          cp "$UPSTREAM_FILE" "$BACKUP_DIR/frontend-upstream.conf"
+          cp "$COLOR_FILE" "$BACKUP_DIR/active-color-frontend"
+
+          restore_env() {
+            cp "$BACKUP_DIR/env" "$DEPLOY_DIR/.env"
+          }
+
+          # 실패한 새 버전은 정리하고 .env 태그도 되돌린다. 운영 중인
+          # 색상에는 손대지 않는다.
+          cleanup_inactive() {
+            docker compose stop "frontend-$TARGET" >/dev/null 2>&1 || true
+            docker compose rm -f "frontend-$TARGET" >/dev/null 2>&1 || true
+            restore_env
+          }
+
+          restore_nginx() {
+            cp "$BACKUP_DIR/frontend-upstream.conf" "$UPSTREAM_FILE"
+            docker compose exec -T nginx nginx -s reload \
+              || docker compose restart nginx \
+              || true
+          }
+
+          # 3. 비활성 색상 태그만 교체
+          TARGET_VAR="FRONTEND_$(tr '[:lower:]' '[:upper:]' <<< "$TARGET")_TAG"
+          grep -q "^$TARGET_VAR=" .env
+          sed -i "s|^$TARGET_VAR=.*|$TARGET_VAR=$IMAGE_TAG|" .env
+          grep -E '^FRONTEND_(BLUE|GREEN)_TAG=' .env
+
+          # 4. 이미지 pull
+          if ! docker compose pull "frontend-$TARGET"; then
+            restore_env
+            echo "image pull failed; active=$ACTIVE 유지"
+            exit 1
+          fi
+
+          # 5. 비활성 컨테이너만 생성 또는 교체
+          if ! docker compose up -d --wait --wait-timeout 90 "frontend-$TARGET"; then
+            docker compose logs --tail=100 "frontend-$TARGET" || true
+            cleanup_inactive
+            echo "inactive container start failed; active=$ACTIVE 유지"
+            exit 1
+          fi
+
+          # 6. 내부 헬스 체크. 리버스 프록시 컨테이너에서 서비스 DNS 로
+          #    직접 확인해 Nginx 가 실제로 도달 가능한지까지 검증한다.
+          HEALTHY=0
+          for attempt in $(seq 1 10); do
+            if docker compose exec -T nginx wget -q -O /dev/null "http://frontend-$TARGET/"; then
+              HEALTHY=1
+              break
+            fi
+            echo "internal health check attempt $attempt failed"
+            sleep 3
+          done
+
+          if [ "$HEALTHY" -ne 1 ]; then
+            docker compose logs --tail=100 "frontend-$TARGET" || true
+            cleanup_inactive
+            echo "internal health check failed; 트래픽 미전환, active=$ACTIVE 유지"
+            exit 1
+          fi
+
+          # 7. upstream 전환. 임시 파일을 먼저 만들고 교체해 설정이 중간
+          #    상태로 노출되지 않게 한다.
+          TMP_UPSTREAM=$(mktemp "$UPSTREAM_FILE.XXXXXX")
+          printf 'upstream frontend_active {\n    server frontend-%s:80;\n}\n' "$TARGET" > "$TMP_UPSTREAM"
+          chmod 644 "$TMP_UPSTREAM"
+          mv "$TMP_UPSTREAM" "$UPSTREAM_FILE"
+
+          if ! docker compose exec -T nginx nginx -t; then
+            cp "$BACKUP_DIR/frontend-upstream.conf" "$UPSTREAM_FILE"
+            cleanup_inactive
+            echo "nginx -t failed; reload 하지 않음, active=$ACTIVE 유지"
+            exit 1
+          fi
+
+          # 8. graceful reload. restart 와 달리 기존 연결을 끊지 않는다.
+          if ! docker compose exec -T nginx nginx -s reload; then
+            restore_nginx
+            cleanup_inactive
+            echo "nginx reload failed; 설정 복원, active=$ACTIVE"
+            exit 1
+          fi
+
+          # 9. 외부 헬스 체크
+          HEALTHY=0
+          for attempt in $(seq 1 10); do
+            if curl --fail --silent --max-time 5 "$HEALTH_URL" > /dev/null; then
+              HEALTHY=1
+              break
+            fi
+            echo "external health check attempt $attempt failed"
+            sleep 3
+          done
+
+          if [ "$HEALTHY" -ne 1 ]; then
+            restore_nginx
+            cleanup_inactive
+            echo "external health check failed; upstream 을 $ACTIVE 로 복원했다"
+            exit 1
+          fi
+
+          # 10. 여기까지 성공해야 활성 색상을 갱신한다.
+          printf '%s\n' "$TARGET" > "$COLOR_FILE"
+
+          # 11. 이전 색상은 빠른 롤백용으로 다음 배포 전까지 살려둔다.
+          echo "switched: $ACTIVE -> $TARGET ($IMAGE_TAG)"
+          echo "rollback 가능 대상: frontend-$ACTIVE (다음 배포 시작 전까지)"
+          docker compose ps frontend-blue frontend-green nginx
+          REMOTE_SCRIPT
+
+          sed -i "s|__IMAGE_TAG__|$IMAGE_TAG|; s|__HEALTH_URL__|$HEALTH_URL|" deploy-frontend.sh
+
+          # 스크립트를 base64 로 실어 보낸다. SSM parameters 는 JSON 이라
+          # 따옴표가 많은 셸 스크립트를 그대로 넣으면 escape 가 깨진다.
+          SCRIPT_B64=$(base64 -w0 deploy-frontend.sh)
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --comment "deploy frontend $IMAGE_TAG" \
+            --comment "blue-green deploy frontend $IMAGE_TAG" \
             --parameters commands="[
               \"set -e\",
-              \"exec 9>/var/lock/banteum-deploy.lock\",
-              \"flock -w 300 9\",
-              \"cd /home/ubuntu/deploy\",
-              \"docker compose config -q\",
-              \"grep -q '^FRONTEND_TAG=' .env\",
-              \"sed -i 's/^FRONTEND_TAG=.*/FRONTEND_TAG=${IMAGE_TAG}/' .env\",
-              \"grep '^FRONTEND_TAG=' .env\",
-              \"docker compose pull frontend\",
-              \"docker compose up -d --wait --wait-timeout 60 frontend\",
-              \"docker compose ps frontend\"
+              \"echo $SCRIPT_B64 | base64 -d > /tmp/deploy-frontend.sh\",
+              \"bash /tmp/deploy-frontend.sh\"
             ]" \
             --query "Command.CommandId" \
             --output text)
 
           # aws ssm wait 의 기본 대기는 5초 x 20회 = 100초다. 잠금 대기 300초와
-          # --wait-timeout 60초를 합치면 넘길 수 있어 직접 폴링한다.
-          DEADLINE=$((SECONDS + 600))
+          # 컨테이너 기동, 헬스 체크를 합치면 넘길 수 있어 직접 폴링한다.
+          DEADLINE=$((SECONDS + 900))
           STATUS=Pending
 
           while (( SECONDS < DEADLINE )); do
@@ -171,11 +331,12 @@ jobs:
             exit 1
           fi
 
+      # 전환 후에도 운영 주소가 정상인지 GitHub Actions 쪽에서 한 번 더 본다.
       - name: Health check
         shell: bash
         run: |
           for attempt in {1..12}; do
-            if curl --fail --silent https://banteum.click/ > /dev/null; then
+            if curl --fail --silent "$HEALTH_URL" > /dev/null; then
               echo "Frontend deployment succeeded"
               exit 0
             fi
@@ -190,6 +351,7 @@ jobs:
       - name: Report deployment failure
         if: failure()
         env:
+          PREVIOUS_COLOR: ${{ steps.previous.outputs.color }}
           PREVIOUS_TAG: ${{ steps.previous.outputs.tag }}
           NEW_TAG: ${{ steps.image.outputs.tag }}
         shell: bash
@@ -197,23 +359,26 @@ jobs:
           echo "Frontend deployment failed"
           echo "New image tag: ${NEW_TAG:-unknown}"
 
-          if [[ -z "$PREVIOUS_TAG" ]]; then
-            echo "Previous image tag: unknown (배포 시작 전에 실패)"
+          if [[ -z "$PREVIOUS_COLOR" ]]; then
+            echo "Previous active color: unknown (배포 시작 전에 실패)"
             echo "EC2 상태는 변경되지 않았을 가능성이 높다."
             exit 0
           fi
 
-          echo "Previous image tag: $PREVIOUS_TAG"
+          echo "Previous active color: $PREVIOUS_COLOR (tag: ${PREVIOUS_TAG:-unknown})"
           echo ""
-          echo "이 시점에 .env는 새 태그, 컨테이너는 이전 이미지일 수 있다."
+          echo "배포 스크립트는 각 실패 지점에서 upstream 과 .env 를 되돌린다."
+          echo "따라서 대부분의 경우 트래픽은 $PREVIOUS_COLOR 에 그대로 있다."
           echo ""
-          echo "수동 롤백 (권장): Actions 탭 -> Frontend CD -> Run workflow"
-          echo "  Branch:    master"
-          echo "  image_tag: $PREVIOUS_TAG"
-          echo ""
-          echo "EC2에서 직접 롤백:"
+          echo "전환 후 기능 장애를 뒤늦게 발견했다면 EC2 에서 수동 롤백한다."
           echo "  cd /home/ubuntu/deploy"
-          echo "  sed -i 's/^FRONTEND_TAG=.*/FRONTEND_TAG=$PREVIOUS_TAG/' .env"
-          echo "  docker compose pull frontend"
-          echo "  docker compose up -d frontend"
-          echo "  docker compose ps frontend"
+          echo "  printf 'upstream frontend_active {\\n    server frontend-$PREVIOUS_COLOR:80;\\n}\\n' > nginx/conf.d/frontend-upstream.conf"
+          echo "  docker compose exec -T nginx nginx -t"
+          echo "  docker compose exec -T nginx nginx -s reload"
+          echo "  curl --fail --silent $HEALTH_URL > /dev/null && echo rollback-ok"
+          echo "  printf '%s\\n' '$PREVIOUS_COLOR' > active-color-frontend"
+          echo ""
+          echo "이전 컨테이너가 이미 정리된 뒤라면 워크플로 재실행으로 되돌린다."
+          echo "  Actions 탭 -> Frontend CD -> Run workflow"
+          echo "  Branch:    master"
+          echo "  image_tag: ${PREVIOUS_TAG:-unknown}"
